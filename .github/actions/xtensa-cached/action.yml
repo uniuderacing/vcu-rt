@@ -1,0 +1,28 @@
+name: Cached Xtensa toolchain install
+description: This action tries to install the Xtensa toolchain from a cache, and if that fails, it installs it from scratch and then caches it for future use.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Restore Xtensa toolchain
+      id: restore-xtensa-toolchain
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.rustup
+        key: xtensa-toolchain
+
+    # This step should be called even if the restore happened, in order to set all the environment variables.
+    - name: Install Xtensa toolchain
+      uses: esp-rs/xtensa-toolchain@v1.5
+      with:
+        ldproxy: false
+        buildtargets: esp32
+
+    - name: Cache Xtensa toolchain
+      if: ${{ steps.restore-xtensa-toolchain.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.rustup
+        key: xtensa-toolchain

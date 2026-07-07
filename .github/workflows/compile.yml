@@ -1,0 +1,112 @@
+name: Compile
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  rust_toolchain: nightly
+
+jobs:
+  build:
+    name: Build
+    runs-on: [self-hosted, X64, speed]
+    container: # Run job in a container instead of the bare machine
+     image: ghcr.io/uniuderacing/buildkit:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - xtensa-esp32s3-espidf
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.LTC681X_PRIVATE_KEY }}
+            ${{ secrets.MESSAGES_PRIVATE_KEY }}
+            ${{ secrets.MPF42790_PRIVATE_KEY }}
+            ${{ secrets.OTC_PRIVATE_KEY }}
+            ${{ secrets.SERENA_MESSAGES_PRIVATE_KEY }}
+            ${{ secrets.ADBMS6830_PRIVATE_KEY }}
+            ${{ secrets.TACOM_PRIVATE_KEY }}
+
+      - name: Add GitHub to the SSH known hosts file
+        run: mkdir -p ~/.ssh; ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: true
+          rustflags: "-D warnings"
+
+      - name: Install Xtensa toolchain
+        uses: ./.github/actions/xtensa-cached
+        if: ${{ matrix.target == 'xtensa-esp32-espidf' || matrix.target == 'xtensa-esp32s3-espidf' || matrix.target == 'xtensa-esp32s2-espidf' }}
+
+      - name: Install ldproxy
+        uses: ./.github/actions/ldproxy-cached
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y python3 python3-venv
+
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ github.workspace }}/target/
+            ${{ github.workspace }}/.embuild/
+          key: build-cache-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: |
+            build-cache-${{ matrix.target }}-
+
+      - name: Build (RISC-V)
+        if: ${{ matrix.target == 'riscv32imc-esp-espidf' }}
+        run: cargo build --workspace --target ${{ matrix.target }} --release
+
+      - name: Build (Xtensa)
+        if: ${{ matrix.target == 'xtensa-esp32-espidf' || matrix.target == 'xtensa-esp32s3-espidf' || matrix.target == 'xtensa-esp32s2-espidf' }}
+        run: . $HOME/exports && cargo +esp build --workspace --target ${{ matrix.target }} --release
+
+      - name: Save build cache
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ github.workspace }}/target/
+            ${{ github.workspace }}/.embuild/
+          key: build-cache-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: |
+            build-cache-${{ matrix.target }}-
+
+      - name: Build archive
+        shell: bash
+        run: |
+          mkdir dist
+          cp "target/${{ matrix.target }}/release/brain" "dist/"
+          cp "target/${{ matrix.target }}/release/bridge" "dist/"
+          cp "target/${{ matrix.target }}/release/charger" "dist/"
+          cp "target/${{ matrix.target }}/release/cooling" "dist/"
+          cp "target/${{ matrix.target }}/release/lvbms" "dist/"
+          cp "target/${{ matrix.target }}/release/telemetry" "dist/"
+          cp "target/${{ matrix.target }}/release/tsac_unit" "dist/"
+          cp "target/${{ matrix.target }}/release/steering" "dist/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-bins
+          path: dist

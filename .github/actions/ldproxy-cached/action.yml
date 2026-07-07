@@ -1,0 +1,30 @@
+name: Cached ldproxy install
+description: This action tries to install ldproxy from the cache. If it fails, it builds it from scratch and then caches it for future use.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get current ldproxy version
+      shell: bash
+      run: |
+        LDPROXY_VERSION=$(cargo search ldproxy | grep ldproxy | cut -d' ' -f3 | cut -d'"' -f2)
+        echo "LDPROXY_VERSION=${LDPROXY_VERSION}" >> $GITHUB_ENV
+
+    - name: Restore ldproxy ${{ env.LDPROXY_VERSION }}
+      id: restore-ldproxy
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cargo/bin/ldproxy
+        key: ldproxy-${{ env.LDPROXY_VERSION }}
+
+    - name: Install ldproxy ${{ env.LDPROXY_VERSION }}
+      shell: bash
+      if: ${{ steps.restore-ldproxy.outputs.cache-hit != 'true' }}
+      run: cargo install ldproxy
+
+    - name: Cache ldproxy ${{ env.LDPROXY_VERSION }}
+      if: ${{ steps.restore-ldproxy.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cargo/bin/ldproxy
+        key: ldproxy-${{ env.LDPROXY_VERSION }}

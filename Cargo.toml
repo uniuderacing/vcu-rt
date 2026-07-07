@@ -1,0 +1,55 @@
+[package]
+name = "vcu-rt"
+version = "0.1.0"
+edition = "2021"
+description = "Asynchronous runtime allowing to easily program the behavior of on-board Vehicle Control Units."
+authors = ["Davide Della Giustina <davide@dellagiustina.com"]
+readme = "./README.md"
+keywords = ["embedded", "runtime", "real-time", "operating system"]
+categories = ["asynchronous", "concurrency", "embedded"]
+
+# +----------+
+# | Features |
+# +----------+
+
+[features]
+log-trace = [] # Enables trace logs (only in debug mode)
+
+# +--------------+
+# | Dependencies |
+# +--------------+
+
+[dependencies]
+ads1x1x = { git = "ssh://git@github.com/uniuderacing/ads1x1x-rs.git" }
+anyhow = "1.0.98"
+async-trait = "0.1.87"
+embedded-can = "0.4.1"
+embedded-hal = "1.0.0"
+esp-idf-hal = { version = "0.45.2" }
+esp-idf-svc = "0.51.0"
+esp-idf-sys = { version = "0.36.1", features = ["binstart", "native"] }
+flume = "0.11.1"
+futures = { version = "0.3.31", features = ["thread-pool"] }
+heapless = "0.8.0"
+log = "0.4.27"
+nb = "1.1.0"
+portable-atomic = { version = "1.11.0", features = ["float"] }
+thiserror = "2.0.12"
+
+[dependencies.messages]
+git = "ssh://git@github.com/uniuderacing/messages.git"
+# path = "../messages"
+default-features = false
+
+[dependencies.serena-messages]
+git = "ssh://git@github.com/uniuderacing/serena-messages.git"
+# path = "../serena-messages"
+default-features = false
+
+[dependencies.tacom]
+git = "ssh://git@github.com/uniuderacing/tacom.git"
+# path = "../tacom"
+branch = "develop" # TODO: Use a release tag after 1.0.6
+
+[build-dependencies]
+embuild = { version = "0.32.0", features = ["espidf"] }
