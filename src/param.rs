@@ -351,8 +351,7 @@ impl CanStream {
         M: GeneralMessageTrait + Into<Message> + Send + 'static,
     {
         let message: Message = item.into();
-        if Self::is_overridable::<M>() {
-            let kind_id = KindId::of::<M>();
+        if let Some(kind_id) = KindId::overridable_for(TypeId::of::<M>()) {
             if self
                 .overridables
                 .lock()
@@ -414,36 +413,8 @@ impl CanStream {
         M: GeneralMessageTrait + Into<Message> + Send + 'static,
     {
         let msg_type = TypeId::of::<M>();
-        msg_type == TypeId::of::<serena_messages::SetInverterSpeedMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterAcCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterRelativeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterRelativeBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumAcCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumDcCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumAcBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumDcBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::InverterDriveEnableMessage>()
-            || msg_type == TypeId::of::<serena_messages::BrainStatusMessage>() // So that settring wheel updates ASAP
-    }
-
-    /// Returns true if and only if the given message type is _overridable_, i.e. if old instances of the same message
-    /// type are no longer relevant after a newer one has been produced.
-    fn is_overridable<M>() -> bool
-    where
-        M: GeneralMessageTrait + Into<Message> + Send + 'static,
-    {
-        let msg_type = TypeId::of::<M>();
-        msg_type == TypeId::of::<serena_messages::SetInverterSpeedMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterAcCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterRelativeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterRelativeBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumAcCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumDcCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumAcBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::SetInverterMaximumDcBrakeCurrentMessage>()
-            || msg_type == TypeId::of::<serena_messages::InverterDriveEnableMessage>()
+        msg_type == TypeId::of::<serena_messages::BrainStatusMessage>()
+            || KindId::overridable_for(msg_type).is_some()
     }
 }
 
@@ -508,36 +479,118 @@ impl CanBusLoad {
 // | KindId |
 // +--------+
 
-/// A [`KindId`] is similar to a [`TypeId`], but coarser (i.e. different types can have the same kind).
-/// This is mainly used to aggregate messages into classes that can span multiple different types. For example, all
-/// inverter control messages (which are different types) have the same kind.
-/// This is mainly used inside a [`CanStream`] in order to avoid queuing old, irrelevant instances of a message of the
-/// same kind of a newer one, in order to minimize latency.
+/// Key for queued messages that a newer value can replace.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum KindId {
-    /// Inverter control messages.
-    InverterControl,
-    /// Types that do not have a special kind fallback to their [`TypeId`].
+    /// Control modes for inverter 1 replace one another.
+    Inverter1Control,
+    /// Control modes for inverter 2 replace one another.
+    Inverter2Control,
+    /// Each limit and drive-enable message has its own key.
     Other(TypeId),
 }
 
 impl KindId {
-    /// Returns the [`KindId`] of the provided message type.
-    fn of<M>() -> Self
-    where
-        M: GeneralMessageTrait + Into<Message> + Send + 'static,
-    {
-        let type_id = TypeId::of::<M>();
-        if type_id == TypeId::of::<serena_messages::SetInverterSpeedMessage>()
-            || type_id == TypeId::of::<serena_messages::SetInverterAcCurrentMessage>()
-            || type_id == TypeId::of::<serena_messages::SetInverterBrakeCurrentMessage>()
-            || type_id == TypeId::of::<serena_messages::SetInverterRelativeCurrentMessage>()
-            || type_id == TypeId::of::<serena_messages::SetInverterRelativeBrakeCurrentMessage>()
+    fn overridable_for(type_id: TypeId) -> Option<Self> {
+        use serena_messages::*;
+
+        if [
+            TypeId::of::<SetInverter1SpeedMessage>(),
+            TypeId::of::<SetInverter1AcCurrentMessage>(),
+            TypeId::of::<SetInverter1BrakeCurrentMessage>(),
+            TypeId::of::<SetInverter1RelativeCurrentMessage>(),
+            TypeId::of::<SetInverter1RelativeBrakeCurrentMessage>(),
+        ]
+        .contains(&type_id)
         {
-            Self::InverterControl
+            Some(Self::Inverter1Control)
+        } else if [
+            TypeId::of::<SetInverter2SpeedMessage>(),
+            TypeId::of::<SetInverter2AcCurrentMessage>(),
+            TypeId::of::<SetInverter2BrakeCurrentMessage>(),
+            TypeId::of::<SetInverter2RelativeCurrentMessage>(),
+            TypeId::of::<SetInverter2RelativeBrakeCurrentMessage>(),
+        ]
+        .contains(&type_id)
+        {
+            Some(Self::Inverter2Control)
+        } else if [
+            TypeId::of::<SetInverter1MaximumAcCurrentMessage>(),
+            TypeId::of::<SetInverter2MaximumAcCurrentMessage>(),
+            TypeId::of::<SetInverter1MaximumDcCurrentMessage>(),
+            TypeId::of::<SetInverter2MaximumDcCurrentMessage>(),
+            TypeId::of::<SetInverter1MaximumAcBrakeCurrentMessage>(),
+            TypeId::of::<SetInverter2MaximumAcBrakeCurrentMessage>(),
+            TypeId::of::<SetInverter1MaximumDcBrakeCurrentMessage>(),
+            TypeId::of::<SetInverter2MaximumDcBrakeCurrentMessage>(),
+            TypeId::of::<Inverter1DriveEnableMessage>(),
+            TypeId::of::<Inverter2DriveEnableMessage>(),
+        ]
+        .contains(&type_id)
+        {
+            Some(Self::Other(type_id))
         } else {
-            Self::Other(type_id)
+            None
         }
+    }
+}
+
+#[cfg(test)]
+mod can_stream_tests {
+    use super::CanStream;
+    use serena_messages::{
+        BrainStatusMessage, Inverter1DriveEnableMessage, Inverter2DriveEnableMessage, Message,
+        MotorMapMessage, SetInverter1AcCurrentMessage, SetInverter1MaximumAcCurrentMessage,
+        SetInverter1SpeedMessage, SetInverter2MaximumAcCurrentMessage, SetInverter2SpeedMessage,
+    };
+
+    #[test]
+    fn control_modes_replace_only_commands_for_the_same_inverter() {
+        let stream = CanStream::new(Some((8, 8)));
+        stream.send(SetInverter1SpeedMessage::default());
+        stream.send(SetInverter2SpeedMessage::default());
+        stream.send(SetInverter1AcCurrentMessage::default());
+
+        assert!(matches!(
+            stream.try_recv(),
+            Some(Message::SetInverter1AcCurrent(_))
+        ));
+        assert!(matches!(
+            stream.try_recv(),
+            Some(Message::SetInverter2Speed(_))
+        ));
+        assert!(stream.try_recv().is_none());
+    }
+
+    #[test]
+    fn drive_enable_and_limits_keep_separate_slots() {
+        let stream = CanStream::new(Some((8, 8)));
+        stream.send(MotorMapMessage::default());
+        stream.send(Inverter1DriveEnableMessage::default());
+        stream.send(Inverter2DriveEnableMessage::default());
+        stream.send(SetInverter1MaximumAcCurrentMessage::default());
+        stream.send(SetInverter2MaximumAcCurrentMessage::default());
+        stream.send(BrainStatusMessage::default());
+
+        assert!(matches!(
+            stream.try_recv(),
+            Some(Message::Inverter1DriveEnable(_))
+        ));
+        assert!(matches!(
+            stream.try_recv(),
+            Some(Message::Inverter2DriveEnable(_))
+        ));
+        assert!(matches!(
+            stream.try_recv(),
+            Some(Message::SetInverter1MaximumAcCurrent(_))
+        ));
+        assert!(matches!(
+            stream.try_recv(),
+            Some(Message::SetInverter2MaximumAcCurrent(_))
+        ));
+        assert!(matches!(stream.try_recv(), Some(Message::BrainStatus(_))));
+        assert!(matches!(stream.try_recv(), Some(Message::MotorMap(_))));
+        assert!(stream.try_recv().is_none());
     }
 }
 
